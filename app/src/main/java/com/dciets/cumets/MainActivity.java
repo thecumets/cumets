@@ -20,6 +20,8 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.ListView;
 
+import com.dciets.cumets.adapter.RoommateAdapter;
+import com.dciets.cumets.model.Roommate;
 import com.facebook.AccessToken;
 import com.facebook.FacebookSdk;
 import com.facebook.GraphRequest;
@@ -32,6 +34,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+
 
 public class MainActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener, View.OnClickListener, DrawerLayout.DrawerListener {
@@ -39,6 +43,7 @@ public class MainActivity extends AppCompatActivity
     private DrawerLayout drawer;
     private Toolbar toolbar;
     private FloatingActionButton fab;
+    private RoommateAdapter adapter;
 
     public static void show(final Context context ) {
         Intent i = new Intent(context, MainActivity.class);
@@ -68,6 +73,41 @@ public class MainActivity extends AppCompatActivity
 
         NavigationView navigationView = (NavigationView) findViewById(R.id.nav_view);
         navigationView.setNavigationItemSelectedListener(this);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshList();
+    }
+
+    private void refreshList() {
+        GraphRequest request = GraphRequest.newMyFriendsRequest(AccessToken.getCurrentAccessToken(), new GraphRequest.GraphJSONArrayCallback() {
+            @Override
+            public void onCompleted(JSONArray objects, GraphResponse response) {
+                Log.i("Cumets", response.toString());
+                try {
+                    ArrayList<Roommate> roommates = new ArrayList<Roommate>();
+                    JSONArray ja = response.getJSONObject().getJSONArray("data");
+                    for (int i = 0; i < ja.length(); i++) {
+                        JSONObject jo = ja.getJSONObject(i);
+                        JSONObject joPicture = jo.getJSONObject("picture").getJSONObject("data");
+                        Roommate roommate = new Roommate(jo.getString("name"), jo.getString("id"),
+                                joPicture.getString("url"));
+                        roommates.add(roommate);
+                    }
+                    adapter = new RoommateAdapter(getApplicationContext(), roommates);
+                    ((ListView) findViewById(R.id.listView)).setAdapter(adapter);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        Bundle b = new Bundle();
+        b.putString("fields", "name,id,picture");
+        request.setParameters(b);
+        request.executeAsync();
     }
 
     @Override
@@ -132,28 +172,22 @@ public class MainActivity extends AppCompatActivity
         if(v.getId() == R.id.start_countdown) {
             //do stuff
         } else if (v.getId() == R.id.fab) {
-            GraphRequest.newMyFriendsRequest(AccessToken.getCurrentAccessToken(), new GraphRequest.GraphJSONArrayCallback() {
+            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+            builder.setTitle(R.string.dialog_invite_title);
+            builder.setMessage(R.string.dialog_invite_desc);
+            builder.setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
                 @Override
-                public void onCompleted(JSONArray objects, GraphResponse response) {
-                    Log.i("Cumets", response.toString());
-                    AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
-                    builder.setTitle(R.string.dialog_invite_title);
-                    builder.setMessage(R.string.dialog_invite_desc);
-                    builder.setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            sendInvite();
-                        }
-                    });
-                    builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-
-                        }
-                    });
-                    builder.create().show();
+                public void onClick(DialogInterface dialog, int which) {
+                    sendInvite();
                 }
-            }).executeAsync();
+            });
+            builder.setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+
+                }
+            });
+            builder.create().show();
         }
     }
 

@@ -152,6 +152,7 @@ public class MainActivity extends AppCompatActivity
             findViewById(R.id.countdown_main).setVisibility(View.GONE);
             findViewById(R.id.roommates_main).setVisibility(View.VISIBLE);
             toolbar.setTitle(R.string.roommates);
+            refreshList();
         } else if (id == R.id.nav_countdown) {
             findViewById(R.id.roommates_main).setVisibility(View.GONE);
             findViewById(R.id.countdown_main).setVisibility(View.VISIBLE);

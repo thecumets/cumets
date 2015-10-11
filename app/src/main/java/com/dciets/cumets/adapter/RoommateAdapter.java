@@ -5,12 +5,14 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.dciets.cumets.R;
 import com.dciets.cumets.model.Roommate;
 import com.dciets.cumets.utils.CircleTransform;
+import com.dciets.cumets.utils.DatabaseHelper;
 import com.squareup.picasso.Picasso;
 
 import java.util.ArrayList;
@@ -33,6 +35,7 @@ public class RoommateAdapter extends ArrayAdapter<Roommate> {
     static class ViewHolder {
         public TextView name;
         public ImageView avatar;
+        public CheckBox checkBox;
     }
 
     private LayoutInflater getInflater(){
@@ -52,6 +55,7 @@ public class RoommateAdapter extends ArrayAdapter<Roommate> {
             ViewHolder holder = new ViewHolder();
             holder.name = (TextView) rowView.findViewById(R.id.name);
             holder.avatar = (ImageView) rowView.findViewById(R.id.avatar);
+            holder.checkBox = (CheckBox) rowView.findViewById(R.id.checkBox);
             rowView.setTag(holder);
         } else{
             rowView = convertView;
@@ -67,6 +71,8 @@ public class RoommateAdapter extends ArrayAdapter<Roommate> {
         if(r.getProfilePictureUrl() != null) {
             Picasso.with(getContext()).load(r.getProfilePictureUrl()).transform(new CircleTransform()).into(holder.avatar);
         }
+
+        holder.checkBox.setSelected(DatabaseHelper.getInstance().isMonitor(r.getProfileId()));
 
         return rowView;
     }

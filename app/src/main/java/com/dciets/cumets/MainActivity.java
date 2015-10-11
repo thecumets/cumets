@@ -1,14 +1,18 @@
 package com.dciets.cumets;
 
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
-import android.view.Gravity;
 import android.view.View;
 import android.support.design.widget.NavigationView;
 import android.support.v4.view.GravityCompat;
@@ -18,17 +22,22 @@ import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.AdapterView;
 import android.widget.ListView;
+import android.widget.TextView;
 
 import com.dciets.cumets.adapter.RoommateAdapter;
+import com.dciets.cumets.listener.LogoutListener;
 import com.dciets.cumets.model.Roommate;
+import com.dciets.cumets.network.Server;
+import com.dciets.cumets.utils.DatabaseHelper;
 import com.facebook.AccessToken;
 import com.facebook.FacebookSdk;
 import com.facebook.GraphRequest;
 import com.facebook.GraphResponse;
-import com.facebook.HttpMethod;
-import com.facebook.Profile;
 import com.facebook.login.LoginManager;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GoogleApiAvailability;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -36,14 +45,22 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 
+import com.dciets.cumets.service.QuickstartPreferences;
+import com.dciets.cumets.service.RegistrationIntentService;
+
+
 
 public class MainActivity extends AppCompatActivity
-        implements NavigationView.OnNavigationItemSelectedListener, View.OnClickListener, DrawerLayout.DrawerListener {
+        implements NavigationView.OnNavigationItemSelectedListener, View.OnClickListener, DrawerLayout.DrawerListener, AdapterView.OnItemClickListener, LogoutListener {
 
+    private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
+    private static final String TAG = "CumETS";
     private DrawerLayout drawer;
     private Toolbar toolbar;
     private FloatingActionButton fab;
     private RoommateAdapter adapter;
+    private BroadcastReceiver mRegistrationBroadcastReceiver;
+    private boolean isActivityStarted;
 
     public static void show(final Context context ) {
         Intent i = new Intent(context, MainActivity.class);
@@ -52,10 +69,33 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if(!FacebookSdk.isInitialized()) {
+            FacebookSdk.sdkInitialize(getApplicationContext());
+        }
         setContentView(R.layout.activity_main);
         toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+        isActivityStarted = false;
+
+
+        mRegistrationBroadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                SharedPreferences sharedPreferences =
+                        PreferenceManager.getDefaultSharedPreferences(context);
+                boolean sentToken = sharedPreferences
+                        .getBoolean(QuickstartPreferences.SENT_TOKEN_TO_SERVER, false);
+
+                Snackbar.make(findViewById(android.R.id.content), sentToken ? "Sent" : "Not sent", Snackbar.LENGTH_SHORT).show();
+            }
+        };
+
+        if (checkPlayServices()) {
+            // Start IntentService to register this application with GCM.
+            Intent intent = new Intent(this, RegistrationIntentService.class);
+            startService(intent);
+        }
 
         drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
         drawer.setDrawerListener(this);
@@ -70,6 +110,7 @@ public class MainActivity extends AppCompatActivity
 
         findViewById(R.id.start_countdown).setOnClickListener(this);
         ((ListView) findViewById(R.id.listView)).setEmptyView(findViewById(R.id.empty_view));
+        ((ListView) findViewById(R.id.listView)).setOnItemClickListener(this);
 
         NavigationView navigationView = (NavigationView) findViewById(R.id.nav_view);
         navigationView.setNavigationItemSelectedListener(this);
@@ -79,13 +120,41 @@ public class MainActivity extends AppCompatActivity
     protected void onResume() {
         super.onResume();
         refreshList();
+        LocalBroadcastManager.getInstance(this).registerReceiver(mRegistrationBroadcastReceiver,
+                new IntentFilter(QuickstartPreferences.REGISTRATION_COMPLETE));
+    }
+
+    @Override
+    protected void onPause() {
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mRegistrationBroadcastReceiver);
+        super.onPause();
+    }
+
+    /**
+     * Check the device to make sure it has the Google Play Services APK. If
+     * it doesn't, display a dialog that allows users to download the APK from
+     * the Google Play Store or enable it in the device's system settings.
+     */
+    private boolean checkPlayServices() {
+        GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
+        int resultCode = apiAvailability.isGooglePlayServicesAvailable(this);
+        if (resultCode != ConnectionResult.SUCCESS) {
+            if (apiAvailability.isUserResolvableError(resultCode)) {
+                apiAvailability.getErrorDialog(this, resultCode, PLAY_SERVICES_RESOLUTION_REQUEST)
+                        .show();
+            } else {
+                Log.i(TAG, "This device is not supported.");
+                finish();
+            }
+            return false;
+        }
+        return true;
     }
 
     private void refreshList() {
         GraphRequest request = GraphRequest.newMyFriendsRequest(AccessToken.getCurrentAccessToken(), new GraphRequest.GraphJSONArrayCallback() {
             @Override
             public void onCompleted(JSONArray objects, GraphResponse response) {
-                Log.i("Cumets", response.toString());
                 try {
                     ArrayList<Roommate> roommates = new ArrayList<Roommate>();
                     JSONArray ja = response.getJSONObject().getJSONArray("data");
@@ -95,6 +164,7 @@ public class MainActivity extends AppCompatActivity
                         Roommate roommate = new Roommate(jo.getString("name"), jo.getString("id"),
                                 joPicture.getString("url"));
                         roommates.add(roommate);
+                        DatabaseHelper.getInstance().addRoommate(roommate.getProfileId());
                     }
                     adapter = new RoommateAdapter(getApplicationContext(), roommates);
                     ((ListView) findViewById(R.id.listView)).setAdapter(adapter);
@@ -159,8 +229,7 @@ public class MainActivity extends AppCompatActivity
             toolbar.setTitle(R.string.countdown);
         } else if (id == R.id.nav_logout) {
             LoginManager.getInstance().logOut();
-            LoginActivity.show(this);
-            finish();
+            Server.logout(this, this);
         }
 
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
@@ -171,7 +240,14 @@ public class MainActivity extends AppCompatActivity
     @Override
     public void onClick(View v) {
         if(v.getId() == R.id.start_countdown) {
-            //do stuff
+            if(!isActivityStarted) {
+                Server.start(this);
+                ((TextView) findViewById(R.id.start_countdown)).setText(R.string.stop_countdown);
+            } else {
+                Server.stop(this);
+                ((TextView) findViewById(R.id.start_countdown)).setText(R.string.start_countdown);
+            }
+            isActivityStarted = !isActivityStarted;
         } else if (v.getId() == R.id.fab) {
             AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
             builder.setTitle(R.string.dialog_invite_title);
@@ -218,5 +294,31 @@ public class MainActivity extends AppCompatActivity
     @Override
     public void onDrawerStateChanged(int newState) {
 
+    }
+
+    @Override
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        Roommate roommate = adapter.getItem(position);
+        boolean isMonitor = DatabaseHelper.getInstance().isMonitor(roommate.getProfileId());
+        if(isMonitor) {
+            DatabaseHelper.getInstance().updateMonitor(roommate.getProfileId(), false);
+            Server.unmonitorUser(this, roommate.getProfileId());
+        } else {
+            DatabaseHelper.getInstance().updateMonitor(roommate.getProfileId(), true);
+            Server.monitorUser(this, roommate.getProfileId());
+        }
+
+        adapter.notifyDataSetChanged();
+    }
+
+    @Override
+    public void onLogoutSuccessful() {
+        LoginActivity.show(this);
+        finish();
+    }
+
+    @Override
+    public void onLogoutError() {
+        Snackbar.make(findViewById(android.R.id.content), R.string.error, Snackbar.LENGTH_SHORT).show();
     }
 }

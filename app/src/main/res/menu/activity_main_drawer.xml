@@ -4,7 +4,7 @@
     <group android:checkableBehavior="single">
         <item android:id="@+id/nav_countdown" android:icon="@android:drawable/ic_dialog_info"
             android:title="@string/countdown" />
-        <item android:id="@+id/nav_roommates" android:icon="@android:drawable/ic_menu_search"
+        <item android:id="@+id/nav_roommates" android:icon="@android:drawable/ic_menu_myplaces"
             android:title="@string/roommates" />
     </group>
 

@@ -30,7 +30,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     public void onCreate(SQLiteDatabase db) {
-        db.execSQL("CREATE TABLE roommates (id INTEGER PRIMARY KEY AUTOINCREMENT, facebook_id TEXT, monitor INTEGER DEFAULT 0);");
+        db.execSQL("CREATE TABLE roommates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, facebook_id TEXT, monitor INTEGER DEFAULT 0);");
     }
 
     @Override
@@ -39,22 +39,24 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         onCreate(db);
     }
 
-    public void addRoommate(String facebookId) {
-        if(isUserAlreadyInDB(facebookId)) {
-            return;
-        }
-
+    public void addRoommate(String name, String facebookId) {
         SQLiteDatabase db = this.getWritableDatabase();
 
         ContentValues cv = new ContentValues();
 
         cv = new ContentValues();
-        cv.put("facebook_id", facebookId);
+        cv.put("name", name);
 
-        db.insert("roommates", null, cv);
+        if(isUserAlreadyInDB(facebookId)) {
+            db.update("roommates", cv, "facebook_id=?", new String[]{facebookId});
+        } else {
+            cv.put("facebook_id", facebookId);
+            db.insert("roommates", null, cv);
+        }
     }
 
     public void updateMonitor(String facebookId, boolean isMonitor) {
+        Log.i(TAG, "updateMonitor: facebookId=" + facebookId + " isMonitor=" + isMonitor);
         SQLiteDatabase db = this.getWritableDatabase();
 
         ContentValues cv = new ContentValues();
@@ -62,31 +64,51 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.update("roommates", cv, "facebook_id = ?", new String[]{facebookId});
     }
 
+    public String getFacebookName(final String facebookId) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        String name = null;
+
+        Cursor c = db.rawQuery("SELECT name FROM roommates WHERE facebook_id = ?;", new String[]{facebookId});
+
+        while (c.moveToNext()) {
+            name = c.getString(0);
+            break;
+        }
+
+        c.close();
+
+        return name;
+    }
+
     public boolean isUserAlreadyInDB(final String facebookId) {
         SQLiteDatabase db = this.getReadableDatabase();
+        boolean isAlready = false;
 
         Cursor c = db.rawQuery("SELECT COUNT(*) FROM roommates WHERE facebook_id = ?;", new String[]{facebookId});
 
         while (c.moveToNext()) {
-            return c.getInt(0) > 0;
+            isAlready = c.getInt(0) > 0;
+            break;
         }
 
         c.close();
 
-        return false;
+        return isAlready;
     }
 
     public boolean isMonitor(String facebookId) {
         SQLiteDatabase db = this.getReadableDatabase();
+        boolean isBoolean = false;
 
         Cursor c = db.rawQuery("SELECT monitor FROM roommates WHERE facebook_id = ?;", new String[]{facebookId});
 
         while (c.moveToNext()) {
-            return c.getInt(0) == 1;
+            isBoolean = c.getInt(0) == 1;
+            break;
         }
 
         c.close();
 
-        return false;
+        return isBoolean;
     }
 }

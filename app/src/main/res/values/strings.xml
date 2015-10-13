@@ -26,4 +26,7 @@
     <string name="gcm_send_message">GCM send message</string>
     <string name="gcm_defaultSenderId">313998303514</string>
     <string name="error">Error</string>
+    <string name="location_error">You must enable the location to use this app</string>
+    <string name="invite_message">Hey! Install the Cumets application for Android to enjoy private personal pleasure!\nhttp://www.cumets.com</string>
+    <string name="distance">%1$s is at approximately %2$s meters</string>
 </resources>

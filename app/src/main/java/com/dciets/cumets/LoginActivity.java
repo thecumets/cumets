@@ -1,18 +1,17 @@
 package com.dciets.cumets;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.support.design.widget.Snackbar;
-import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.widget.Toast;
 
 import com.dciets.cumets.listener.CreateListener;
-import com.dciets.cumets.listener.LoginListener;
 import com.dciets.cumets.network.Server;
 import com.dciets.cumets.utils.DatabaseHelper;
 import com.facebook.AccessToken;
@@ -25,8 +24,9 @@ import com.facebook.login.LoginResult;
 import com.facebook.login.widget.LoginButton;
 
 
-public class LoginActivity extends Activity implements CreateListener, LoginListener {
+public class LoginActivity extends Activity implements CreateListener {
 
+    private static final int REQUEST_PERMISSION = 9000;
     private LoginButton loginButton;
     private CallbackManager callbackManager;
 
@@ -43,9 +43,6 @@ public class LoginActivity extends Activity implements CreateListener, LoginList
 
         setContentView(R.layout.activity_login);
 
-        MainActivity.show(this);
-        finish();
-
         callbackManager = CallbackManager.Factory.create();
 
         loginButton = (LoginButton) findViewById(R.id.login_button);
@@ -53,31 +50,14 @@ public class LoginActivity extends Activity implements CreateListener, LoginList
         // Other app specific specialization
 
         // Callback registration
-            loginButton.registerCallback(callbackManager, new FacebookCallback<LoginResult>() {
-                @Override
-                public void onSuccess(LoginResult loginResult) {
-                    Server.createUser(LoginActivity.this, loginResult.getAccessToken().getToken(), loginResult.getAccessToken().getUserId(), Profile.getCurrentProfile().getName(), "", LoginActivity.this);
-                    MainActivity.show(LoginActivity.this);
-                    finish();
-                }
-
-                @Override
-                public void onCancel() {
-                    Toast.makeText(getApplicationContext(), R.string.com_facebook_loginview_cancel_action, Toast.LENGTH_SHORT).show();
-                }
-
-                @Override
-                public void onError(FacebookException exception) {
-                    Toast.makeText(getApplicationContext(), R.string.com_facebook_image_download_unknown_error, Toast.LENGTH_SHORT).show();
-                }
-            });
+        loginButton.registerCallback(callbackManager, new FacebookCB(this));
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         if(AccessToken.getCurrentAccessToken() != null) {
-            Server.login(this, AccessToken.getCurrentAccessToken().getUserId(), this);
+            Server.create(this, AccessToken.getCurrentAccessToken().getToken(), AccessToken.getCurrentAccessToken().getUserId(), "", this);
         }
     }
 
@@ -89,7 +69,33 @@ public class LoginActivity extends Activity implements CreateListener, LoginList
 
     @Override
     public void onCreateSuccessful() {
-        Server.login(this, AccessToken.getCurrentAccessToken().getUserId(), this);
+        if(Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_PERMISSION);
+        } else {
+            MainActivity.show(this);
+            finish();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if(requestCode == REQUEST_PERMISSION) {
+            boolean allEnabled = true;
+            for(int i = 0; i<grantResults.length; i++) {
+                Log.i("MainActivity", grantResults[i] + "");
+                if(grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                    allEnabled = false;
+                }
+            }
+
+            if(allEnabled) {
+                MainActivity.show(this);
+                finish();
+            } else {
+                Snackbar.make(findViewById(android.R.id.content), R.string.location_error, Snackbar.LENGTH_SHORT).show();
+            }
+        }
     }
 
     @Override
@@ -97,14 +103,26 @@ public class LoginActivity extends Activity implements CreateListener, LoginList
         Snackbar.make(findViewById(android.R.id.content), R.string.error, Snackbar.LENGTH_SHORT).show();
     }
 
-    @Override
-    public void onLoginSuccessful() {
-        MainActivity.show(this);
-        finish();
-    }
+    private class FacebookCB implements FacebookCallback<LoginResult> {
+        final LoginActivity loginActivity;
 
-    @Override
-    public void onLoginError() {
-        Snackbar.make(findViewById(android.R.id.content), R.string.error, Snackbar.LENGTH_SHORT).show();
+        public FacebookCB(final LoginActivity loginActivity) {
+            this.loginActivity = loginActivity;
+        }
+
+        @Override
+        public void onSuccess(LoginResult loginResult) {
+            Server.create(loginActivity, loginResult.getAccessToken().getToken(), loginResult.getAccessToken().getUserId(), "", loginActivity);
+        }
+
+        @Override
+        public void onCancel() {
+            Toast.makeText(loginActivity, R.string.cancel, Toast.LENGTH_SHORT).show();
+        }
+
+        @Override
+        public void onError(FacebookException exception) {
+            Toast.makeText(loginActivity, R.string.error, Toast.LENGTH_SHORT).show();
+        }
     }
 }

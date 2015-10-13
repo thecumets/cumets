@@ -25,12 +25,17 @@ import android.view.MenuItem;
 import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.dciets.cumets.adapter.RoommateAdapter;
-import com.dciets.cumets.listener.LogoutListener;
+import com.dciets.cumets.listener.MonitorListener;
+import com.dciets.cumets.listener.PleasureListener;
+import com.dciets.cumets.listener.UpdateListener;
 import com.dciets.cumets.model.Roommate;
+import com.dciets.cumets.model.UpdateInfo;
 import com.dciets.cumets.network.Server;
 import com.dciets.cumets.utils.DatabaseHelper;
+import com.dciets.cumets.utils.Utils;
 import com.facebook.AccessToken;
 import com.facebook.FacebookSdk;
 import com.facebook.GraphRequest;
@@ -44,6 +49,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import com.dciets.cumets.service.QuickstartPreferences;
 import com.dciets.cumets.service.RegistrationIntentService;
@@ -51,16 +58,17 @@ import com.dciets.cumets.service.RegistrationIntentService;
 
 
 public class MainActivity extends AppCompatActivity
-        implements NavigationView.OnNavigationItemSelectedListener, View.OnClickListener, DrawerLayout.DrawerListener, AdapterView.OnItemClickListener, LogoutListener {
+        implements NavigationView.OnNavigationItemSelectedListener, View.OnClickListener, DrawerLayout.DrawerListener, AdapterView.OnItemClickListener, PleasureListener, MonitorListener, UpdateListener {
 
-    private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
+
     private static final String TAG = "CumETS";
     private DrawerLayout drawer;
     private Toolbar toolbar;
     private FloatingActionButton fab;
     private RoommateAdapter adapter;
-    private BroadcastReceiver mRegistrationBroadcastReceiver;
     private boolean isActivityStarted;
+    private PleasureTimerTask pleasureTimerTask;
+    private Timer timer;
 
     public static void show(final Context context ) {
         Intent i = new Intent(context, MainActivity.class);
@@ -78,24 +86,13 @@ public class MainActivity extends AppCompatActivity
 
         isActivityStarted = false;
 
-
-        mRegistrationBroadcastReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                SharedPreferences sharedPreferences =
-                        PreferenceManager.getDefaultSharedPreferences(context);
-                boolean sentToken = sharedPreferences
-                        .getBoolean(QuickstartPreferences.SENT_TOKEN_TO_SERVER, false);
-
-                Snackbar.make(findViewById(android.R.id.content), sentToken ? "Sent" : "Not sent", Snackbar.LENGTH_SHORT).show();
-            }
-        };
-
-        if (checkPlayServices()) {
+        if (Utils.checkPlayServices(this)) {
             // Start IntentService to register this application with GCM.
             Intent intent = new Intent(this, RegistrationIntentService.class);
             startService(intent);
         }
+
+        timer = new Timer();
 
         drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
         drawer.setDrawerListener(this);
@@ -120,35 +117,6 @@ public class MainActivity extends AppCompatActivity
     protected void onResume() {
         super.onResume();
         refreshList();
-        LocalBroadcastManager.getInstance(this).registerReceiver(mRegistrationBroadcastReceiver,
-                new IntentFilter(QuickstartPreferences.REGISTRATION_COMPLETE));
-    }
-
-    @Override
-    protected void onPause() {
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(mRegistrationBroadcastReceiver);
-        super.onPause();
-    }
-
-    /**
-     * Check the device to make sure it has the Google Play Services APK. If
-     * it doesn't, display a dialog that allows users to download the APK from
-     * the Google Play Store or enable it in the device's system settings.
-     */
-    private boolean checkPlayServices() {
-        GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
-        int resultCode = apiAvailability.isGooglePlayServicesAvailable(this);
-        if (resultCode != ConnectionResult.SUCCESS) {
-            if (apiAvailability.isUserResolvableError(resultCode)) {
-                apiAvailability.getErrorDialog(this, resultCode, PLAY_SERVICES_RESOLUTION_REQUEST)
-                        .show();
-            } else {
-                Log.i(TAG, "This device is not supported.");
-                finish();
-            }
-            return false;
-        }
-        return true;
     }
 
     private void refreshList() {
@@ -164,7 +132,7 @@ public class MainActivity extends AppCompatActivity
                         Roommate roommate = new Roommate(jo.getString("name"), jo.getString("id"),
                                 joPicture.getString("url"));
                         roommates.add(roommate);
-                        DatabaseHelper.getInstance().addRoommate(roommate.getProfileId());
+                        DatabaseHelper.getInstance().addRoommate(roommate.getName(), roommate.getProfileId());
                     }
                     adapter = new RoommateAdapter(getApplicationContext(), roommates);
                     ((ListView) findViewById(R.id.listView)).setAdapter(adapter);
@@ -229,7 +197,8 @@ public class MainActivity extends AppCompatActivity
             toolbar.setTitle(R.string.countdown);
         } else if (id == R.id.nav_logout) {
             LoginManager.getInstance().logOut();
-            Server.logout(this, this);
+            LoginActivity.show(this);
+            finish();
         }
 
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
@@ -241,13 +210,10 @@ public class MainActivity extends AppCompatActivity
     public void onClick(View v) {
         if(v.getId() == R.id.start_countdown) {
             if(!isActivityStarted) {
-                Server.start(this);
-                ((TextView) findViewById(R.id.start_countdown)).setText(R.string.stop_countdown);
+                Server.start(this, this);
             } else {
-                Server.stop(this);
-                ((TextView) findViewById(R.id.start_countdown)).setText(R.string.start_countdown);
+                Server.stop(this, this);
             }
-            isActivityStarted = !isActivityStarted;
         } else if (v.getId() == R.id.fab) {
             AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
             builder.setTitle(R.string.dialog_invite_title);
@@ -269,7 +235,7 @@ public class MainActivity extends AppCompatActivity
     }
 
     public void sendInvite(){
-        String shareBody = "Hey! Install the Cumets application for Android to enjoy private personal pleasure!\nhttp://www.cumets.com";
+        String shareBody = getString(R.string.invite_message);
         Intent sharingIntent = new Intent(android.content.Intent.ACTION_SEND);
         sharingIntent.setType("text/plain");
         sharingIntent.putExtra(android.content.Intent.EXTRA_TEXT, shareBody);
@@ -301,24 +267,97 @@ public class MainActivity extends AppCompatActivity
         Roommate roommate = adapter.getItem(position);
         boolean isMonitor = DatabaseHelper.getInstance().isMonitor(roommate.getProfileId());
         if(isMonitor) {
-            DatabaseHelper.getInstance().updateMonitor(roommate.getProfileId(), false);
-            Server.unmonitorUser(this, roommate.getProfileId());
+            Server.unmonitorUser(this, roommate.getProfileId(), this);
         } else {
-            DatabaseHelper.getInstance().updateMonitor(roommate.getProfileId(), true);
-            Server.monitorUser(this, roommate.getProfileId());
+            Server.monitorUser(this, roommate.getProfileId(), this);
         }
+    }
 
+    @Override
+    public void onPleasureStartedSuccessful() {
+        ((TextView) findViewById(R.id.start_countdown)).setText(R.string.stop_countdown);
+        isActivityStarted = true;
+        timer.cancel();
+        timer = new Timer();
+        pleasureTimerTask  = new PleasureTimerTask(this);
+        timer.schedule(pleasureTimerTask, 0, 30000);
+    }
+
+    @Override
+    public void onPleasureStartedError() {
+        Snackbar.make(findViewById(android.R.id.content), R.string.error, Snackbar.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onPleasureStoppedSuccessful() {
+        ((TextView) findViewById(R.id.start_countdown)).setText(R.string.start_countdown);
+        isActivityStarted = false;
+        pleasureTimerTask.cancel();
+        timer.cancel();
+    }
+
+    @Override
+    public void onPleasureStoppedError() {
+        Snackbar.make(findViewById(android.R.id.content), R.string.error, Snackbar.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onMonitorSuccessful(final String facebookId) {
+        DatabaseHelper.getInstance().updateMonitor(facebookId, true);
         adapter.notifyDataSetChanged();
     }
 
     @Override
-    public void onLogoutSuccessful() {
-        LoginActivity.show(this);
-        finish();
+    public void onMonitorError() {
+        Snackbar.make(findViewById(android.R.id.content), R.string.error, Snackbar.LENGTH_SHORT).show();
     }
 
     @Override
-    public void onLogoutError() {
+    public void onUnmonitorSuccessful(final String facebookId) {
+        DatabaseHelper.getInstance().updateMonitor(facebookId, false);
+        adapter.notifyDataSetChanged();
+    }
+
+    @Override
+    public void onUnmonitorError() {
         Snackbar.make(findViewById(android.R.id.content), R.string.error, Snackbar.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onNewUpdateInformation(final UpdateInfo update) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if(update != null) {
+                    Toast.makeText(getApplicationContext(), getString(R.string.distance,
+                            DatabaseHelper.getInstance().getFacebookName(update.getFacebookId()),
+                            String.valueOf(Utils.round(update.getDistance(), 2))), Toast.LENGTH_LONG).show();
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onError() {
+        Snackbar.make(findViewById(android.R.id.content), R.string.error, Snackbar.LENGTH_SHORT).show();
+    }
+
+    private static class PleasureTimerTask extends TimerTask {
+        final MainActivity activity;
+        int nbExecutes;
+
+        public PleasureTimerTask(final MainActivity activity) {
+            this.activity = activity;
+            nbExecutes = 0;
+        }
+
+        public void run() {
+            if(nbExecutes < 20) {
+                nbExecutes++;
+                Server.update(activity, activity);
+            } else {
+                cancel();
+            }
+        }
     }
 }

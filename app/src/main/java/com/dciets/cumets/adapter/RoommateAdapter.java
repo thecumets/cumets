@@ -72,7 +72,7 @@ public class RoommateAdapter extends ArrayAdapter<Roommate> {
             Picasso.with(getContext()).load(r.getProfilePictureUrl()).transform(new CircleTransform()).into(holder.avatar);
         }
 
-        holder.checkBox.setSelected(DatabaseHelper.getInstance().isMonitor(r.getProfileId()));
+        holder.checkBox.setChecked(DatabaseHelper.getInstance().isMonitor(r.getProfileId()));
 
         return rowView;
     }

@@ -215,15 +215,9 @@ public class Server {
                 }, new Response.ErrorListener() {
             @Override
             public void onErrorResponse(VolleyError error) {
-                Log.i(TAG, error.networkResponse.statusCode + "");
-                if(error.networkResponse.statusCode == 409) {
-                    if(listener != null) {
-                        listener.onCreateSuccessful();
-                    }
-                } else {
-                    if(listener != null) {
-                        listener.onCreateError();
-                    }
+                Log.i(TAG, error.toString());
+                if(listener != null) {
+                    listener.onCreateError();
                 }
 
             }
